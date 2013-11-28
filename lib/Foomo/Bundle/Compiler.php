@@ -44,7 +44,11 @@ class Compiler
 		if($debug) {
 			return self::compileBundleUsingProvider($bundleProvider, $bundleProviderArguments);
 		} else {
-			return Proxy::call(__CLASS__, 'cachedCompileBundleUsingProvider', array($bundleProvider, $bundleProviderArguments));
+			return Proxy::call(
+				__CLASS__,
+				'cachedCompileBundleUsingProvider',
+				array($bundleProvider, $bundleProviderArguments)
+			);
 		}
 	}
 	/**
