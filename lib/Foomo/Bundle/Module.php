@@ -18,6 +18,7 @@
  */
 
 namespace Foomo\Bundle;
+use Foomo\Modules\MakeResult;
 
 /**
  * @link www.foomo.org
@@ -34,6 +35,7 @@ class Module extends \Foomo\Modules\ModuleBase
 	 *
 	 */
 	const NAME = 'Foomo.Bundle';
+	const VERSION = '0.1.0';
 
 	//---------------------------------------------------------------------------------------------
 	// ~ Overriden static methods
@@ -75,4 +77,18 @@ class Module extends \Foomo\Modules\ModuleBase
 			// \Foomo\Modules\Resource\Config::getResource('yourModule', 'db')
 		);
 	}
+	public static function make($target, MakeResult $result)
+	{
+		switch($target) {
+			case 'clean':
+				self::cleanDir(self::getHtdocsVarDir(), $result);
+				self::cleanDir(self::getVarDir(), $result);
+				$result->addEntry('deleting bundle cache');
+				\Foomo\Cache\Manager::invalidateWithQuery('Foomo\\Bundle\\Compiler::cachedCompileBundleUsingProvider', null, true, Invalidator::POLICY_DELETE);
+				break;
+			default:
+				parent::make($target, $result);
+		}
+	}
+
 }
