@@ -149,4 +149,13 @@ abstract class AbstractBundle
 	 * @return string the merged and compressed whatever it was
 	 */
 	abstract public static function mergeFiles(array $files, $debug);
+
+	/**
+	 * can you merge stuff ?
+	 *
+	 * @param string $mimeType
+	 *
+	 * @return bool
+	 */
+	abstract public static function canMerge($mimeType);
 }

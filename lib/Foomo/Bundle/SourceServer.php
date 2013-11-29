@@ -28,31 +28,50 @@ use Foomo\Modules\Manager;
  */
 abstract class SourceServer
 {
-	public static function mapSource($src, array $sourceMapping, $out)
+	/**
+	 * fixes the generated source map, so that it references the source server
+	 *
+	 * @param string $filenameCompiled tsc outfile
+	 * @param array $sourceMapping
+	 */
+	public static function fixSourcemap($filenameCompiled, $moduleName)
+	{
+		$mapFile = $filenameCompiled . '.map';
+		$map = json_decode(file_get_contents($mapFile));
+		$newSources = array();
+		foreach($map->sources as $src) {
+			$newSources[] = self::mapSource($src, $filenameCompiled, $moduleName);
+		}
+		$map->sources = $newSources;
+		$map->file = basename($filenameCompiled);
+		file_put_contents($mapFile, json_encode($map));
+	}
+	private static function mapSource($src, $filenameCompiled, $moduleName)
 	{
 		static $moduleDir = null;
 		if(is_null($moduleDir)) {
 			$moduleDir = Config::getModuleDir();
 		}
 		$originalSrc = $src;
-		$src = realpath(dirname($out) . DIRECTORY_SEPARATOR . $src);
+		$testSrc = realpath($src);
+		if($testSrc !== false) {
+			// absolute filename
+			$src = $testSrc;
+		} else {
+			// relative path
+			$src = realpath(dirname($filenameCompiled) . DIRECTORY_SEPARATOR . $src);
+		}
 		if($src === false) {
-			trigger_error('could not find src ' . $src . ' in ' . dirname($out));
+			trigger_error('could not find src ' . $src . ' in ' . dirname($filenameCompiled));
 		}
-		if(!empty($sourceMapping)) {
-			foreach($sourceMapping as $local => $remote) {
-				if(strpos($src, $local) === 0) {
-					$src = $remote . substr($src, strlen($local));
-					return 'file://' . $src;
-				}
-			}
-		}
-		if(substr($src, strlen($moduleDir)) === $moduleDir) {
-			// typescript convention match
+		if(substr($src, 0, strlen($moduleDir)) === $moduleDir) {
+			// convention match
 			$parts = explode(DIRECTORY_SEPARATOR, substr($src, strlen($moduleDir) + 1));
-			if(count($parts) > 2 && $parts[1] == 'typescript') {
+			$calledClass = get_called_class();
+			$rootDir = $calledClass::getModuleRootFolder();
+			if(count($parts) > 2 && $parts[1] == $rootDir) {
 				unset($parts[1]);
-				return Module::getHtdocsPath() . '/sourceServer.php/' . implode('/', $parts);
+				return \Foomo\Config::getHtdocsPath($moduleName) . '/sourceServer.php/' . implode('/', $parts);
 			} else {
 				return $originalSrc;
 			}
@@ -67,14 +86,15 @@ abstract class SourceServer
 			$moduleName = $parts[0];
 			if(Manager::isModuleEnabled($moduleName)) {
 				$calledClass = get_called_class();
-				$filename = Config::getModuleDir($moduleName) . DIRECTORY_SEPARATOR . ($calledClass::getModuleRootFolder());
+				$rootDir = $calledClass::getModuleRootFolder();
+				$filename = Config::getModuleDir($moduleName) . DIRECTORY_SEPARATOR . $rootDir;
 				if(file_exists($filename) == is_dir($filename)) {
 					unset($parts[0]);
 					$filename = realpath($filename) . DIRECTORY_SEPARATOR . implode(DIRECTORY_SEPARATOR, $parts);
 					if($filename == realpath($filename)) {
 						return $filename;
 					} else {
-						trigger_error('smbdy is trying to bullshit us and trying to exit the typescript dir for a module ' . $filename . ' != ' . realpath($filename), E_USER_WARNING);
+						trigger_error('somebody is trying to bullshit us and trying to exit the ' . $rootDir . ' dir for module ' . $moduleName . ' != ' . realpath($filename), E_USER_WARNING);
 						return null;
 					}
 				} else {
@@ -86,7 +106,7 @@ abstract class SourceServer
 			trigger_error('illegal path to resolve');
 			return null;
 		}
-		return '';
+		return null;
 	}
 
 	public static function run()

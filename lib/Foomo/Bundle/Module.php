@@ -18,6 +18,7 @@
  */
 
 namespace Foomo\Bundle;
+use Foomo\Cache\Invalidator;
 use Foomo\Modules\MakeResult;
 
 /**
@@ -77,6 +78,20 @@ class Module extends \Foomo\Modules\ModuleBase
 			// \Foomo\Modules\Resource\Config::getResource('yourModule', 'db')
 		);
 	}
+	public static function cleanDir($dir, MakeResult $result)
+	{
+		$result->addEntry('cleaning js files in ' . $dir);
+		foreach(new \DirectoryIterator($dir) as $fileInfo) {
+			if($fileInfo->isFile() && substr($fileInfo->getFilename(), -3) == '.js') {
+				if(unlink($fileInfo->getPathname())) {
+					$result->addEntry('removed ' . $fileInfo->getFilename());
+				} else {
+					$result->addEntry('could not remove ' . $fileInfo->getFilename(), MakeResult\Entry::LEVEL_ERROR, false);
+				}
+			}
+		}
+	}
+
 	public static function make($target, MakeResult $result)
 	{
 		switch($target) {

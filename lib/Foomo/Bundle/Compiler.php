@@ -30,6 +30,11 @@ use Foomo\HTMLDocument;
  */
 class Compiler
 {
+
+	//------------------------------------------------------------------------------------------------------------------
+	// public api
+	//------------------------------------------------------------------------------------------------------------------
+
 	/**
 	 * @param mixed $bundleProvider
 	 * @param array $bundleProviderArguments
@@ -64,14 +69,23 @@ class Compiler
 			$doc = HTMLDocument::getInstance();
 		}
 		$result = self::compileAndCache($bundleProvider, $bundleProviderArguments, $debug);
-		switch($result->mimeType) {
-			case Compiler\Result::MIME_TYPE_JS:
-				$doc->addJavascriptsToBody($result->links);
-				break;
-			case Compiler\Result::MIME_TYPE_CSS:
-				$doc->addStylesheets($result->links);
-				break;
+		$jsLinks = array();
+		$cssLinks = array();
+		foreach($result->resources as $resource) {
+			switch($resource->mimeType) {
+				case Compiler\Result\Resource::MIME_TYPE_JS:
+					$jsLinks[] = $resource->link;
+					break;
+				case Compiler\Result\Resource::MIME_TYPE_CSS:
+					$cssLinks[] = $resource->link;
+					break;
+			}
 		}
+		$doc
+			->addStylesheets($cssLinks)
+			->addJavascriptsToBody($jsLinks)
+		;
+
 	}
 
 	/**
@@ -97,6 +111,11 @@ class Compiler
 	{
 		return self::compile(call_user_func_array(explode('::', $bundleProvider), $bundleProviderArguments));
 	}
+
+	//------------------------------------------------------------------------------------------------------------------
+	// private implementation
+	//------------------------------------------------------------------------------------------------------------------
+
 	/**
 	 * @param AbstractBundle $bundle
 	 *
@@ -106,46 +125,66 @@ class Compiler
 	{
 		$dependencies = Dependency\Manager::getSortedDependencies($bundle);
 		$dependencies[] = $topLevel = new Dependency($bundle, Dependency::TYPE_LINK);
+		$mergers = array(
+			Compiler\Result\Resource::MIME_TYPE_CSS => null,
+			Compiler\Result\Resource::MIME_TYPE_JS => null
+		);
+		$mergersFound = 0;
 		foreach ($dependencies as $dependency) {
-			//Timer::start($timerAction = 'compile ' . $dependency->bundle->name);
+			if(count($mergers) > $mergersFound) {
+				foreach($mergers as $mimeType => $merger) {
+					if(is_null($merger) && call_user_func_array(array(get_class($dependency->bundle), 'canMerge'), array($mimeType))) {
+						$mergers[$mimeType] = $dependency->bundle;
+						$mergersFound ++;
+					}
+				}
+			}
 			$dependency->compile();
-			//Timer::stop($timerAction);
 		}
 		self::build($topLevel, $bundle->debug);
-
 		// if something has to be merged, do it now
-		for ($i = 0; $i < count($topLevel->result->files); $i++) {
-			$files = $topLevel->result->files[$i];
-			if (is_array($files)) {
-
-				switch($topLevel->result->mimeType) {
-					case Compiler\Result::MIME_TYPE_JS:
-						$suffix = '.min.js';
-						break;
-					case Compiler\Result::MIME_TYPE_CSS:
-						$suffix = '.min.css';
-						break;
-					default:
-						trigger_error('can not merge mimeType: ' . $topLevel->result->mimeType, E_USER_ERROR);
-				}
-
-				$name = 'merged-' . $topLevel->result->links[$i] . '-' . md5(implode('-', $files));
-				$basename =  $name . $suffix;
-
-				$filename = \Foomo\Bundle\Module::getHtdocsVarDir() . DIRECTORY_SEPARATOR . $basename;
-				if (!file_exists($filename)) {
-					$newContents = call_user_func_array(array(get_class($topLevel->bundle), 'mergeFiles'), array($files, $bundle->debug));
-					$oldContents = '';
-					if(file_exists($filename)) {
-						$oldContents = file_get_contents($filename);
+		for ($i = 0; $i < count($topLevel->result->resources); $i++) {
+			$resources = $topLevel->result->resources[$i];
+			if (is_array($resources)) {
+				$mimeFiles = array();
+				foreach($resources['resources'] as $resource) {
+					if(!isset($mimeFiles[$resource->mimeType])) {
+						$mimeFiles[$resource->mimeType] = array();
 					}
-					if($oldContents != $newContents) {
-						file_put_contents($filename, $newContents);
-					}
+					$mimeFiles[$resource->mimeType][] = $resource->file;
 				}
+				foreach($mimeFiles as $mimeType => $files) {
+					switch($mimeType) {
+						case Compiler\Result\Resource::MIME_TYPE_JS:
+							$suffix = '.min.js';
+							break;
+						case Compiler\Result\Resource::MIME_TYPE_CSS:
+							$suffix = '.min.css';
+							break;
+						default:
+							trigger_error('can not merge mimeType: ' . $topLevel->result->mimeType, E_USER_ERROR);
+					}
 
-				$topLevel->result->files[$i] = $filename;
-				$topLevel->result->links[$i] = \Foomo\Bundle\Module::getHtdocsVarBuildPath($basename);
+					$name = 'merged-' . $resources['name'] . '-' . md5(implode('-', $files));
+					$basename =  $name . $suffix;
+
+					$filename = \Foomo\Bundle\Module::getHtdocsVarDir() . DIRECTORY_SEPARATOR . $basename;
+					if (!file_exists($filename)) {
+						$newContents = call_user_func_array(array(get_class($mergers[$mimeType]), 'mergeFiles'), array($files, $bundle->debug));
+						$oldContents = '';
+						if(file_exists($filename)) {
+							$oldContents = file_get_contents($filename);
+						}
+						if($oldContents != $newContents) {
+							file_put_contents($filename, $newContents);
+						}
+					}
+					$topLevel->result->resources[$i] = Compiler\Result\Resource::create(
+						$mimeType,
+						$filename,
+						\Foomo\Bundle\Module::getHtdocsVarBuildPath($basename)
+					);
+				}
 			}
 		}
 		return $topLevel->result;
@@ -156,30 +195,41 @@ class Compiler
 		foreach ($dependency->bundle->dependencies as $parentDependency) {
 			self::build($parentDependency, $debug);
 			if (
-				$parentDependency->result->mimeType == $dependency->result->mimeType &&
 				$parentDependency->type == Dependency::TYPE_MERGE &&
 				!$debug
 			) {
-				$merged = self::flattenArray($parentDependency->result->files);
-				array_pop($dependency->result->links);                // remove the link as well
-				$lastItem = array_pop($dependency->result->files);
+				// merge
+				$merged = array(
+					'resources' => self::flattenArray($parentDependency->result->resources),
+					'name' => $dependency->bundle->name
+				);
+				$lastItem = array_pop($dependency->result->resources);
 				if (is_array($lastItem)) {
-					$lastJs = array_pop($lastItem);
-					$merged = array_merge($merged, $lastItem);
-					$merged[] = $lastJs;
-				} else {
-					$merged[] = $lastItem;
+					$lastResource = array_pop($lastItem['resources']);
+					$merged['resources'] = array_merge($merged['resources'], $lastItem['resources']);
+					$merged['resources'][] = $lastResource;
+				} else if(is_object($lastItem)) {
+					$merged['resources'][] = $lastItem;
 				}
-				$dependency->result->files[] = $merged;
-				$dependency->result->links[] = $dependency->bundle->name;
+				$dependency->result->resources[] = $merged;
 			} else {
 				// link
-				$dependency->result->files = array_merge($parentDependency->result->files, $dependency->result->files);
-				$dependency->result->links = array_merge($parentDependency->result->links, $dependency->result->links);
+				$dependency->result->resources = array_merge($parentDependency->result->resources, $dependency->result->resources);
 			}
 		}
 	}
 
+	private static function getLastResource($resourceArray)
+	{
+		$cleanResources = array();
+		$lastResource = null;
+		foreach($resourceArray as $resource) {
+			if(!is_string($resource)) {
+				$lastResource = $resource;
+			}
+		}
+		return $lastResource;
+	}
 	/**
 	 * @param mixed[] $a array of arrays
 	 * @return string[]
@@ -187,7 +237,10 @@ class Compiler
 	private static function flattenArray($a)
 	{
 		$res = array();
-		foreach ($a as $item) {
+		if(isset($a['resources'])) {
+			$a = $a['resources'];
+		}
+		foreach ($a as $key => $item) {
 			if (is_array($item)) {
 				$res = array_merge($res, self::flattenArray($item));
 			} else {

@@ -17,17 +17,46 @@
  * the foomo Opensource Framework. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Foomo\Bundle\Compiler;
+namespace Foomo\Bundle\Compiler\Result;
 
 
 /**
  * @link www.foomo.org
  * @license www.gnu.org/licenses/lgpl.txt
  */
-class Result
+class Resource
 {
+	const MIME_TYPE_JS  = 'application/javascript';
+	const MIME_TYPE_CSS = 'text/css';
 	/**
-	 * @var Result\Resource[]
+	 * @var string
 	 */
-	public $resources = array();
+	public $mimeType;
+	/**
+	 * absolute path to the js file
+	 *
+	 * @var string
+	 */
+	public $file;
+	/**
+	 * js URI to be added to a HTML document
+	 *
+	 * @var string
+	 */
+	public $link;
+
+	/**
+	 * @param string $mimeType one of self::MIME_TYPE_...
+	 * @param string $file
+	 * @param string $link
+	 * @return Resource
+	 */
+	public static function create($mimeType, $file, $link)
+	{
+		$ret = new self;
+		$ret->mimeType = $mimeType;
+		$ret->file = $file;
+		$ret->link = $link;
+		return $ret;
+	}
 }
