@@ -23,6 +23,7 @@ use AbstractBundle as Bundle;
 use Foomo\Cache\Proxy;
 use Foomo\Config;
 use Foomo\HTMLDocument;
+use Foomo\Timer;
 
 /**
  * @link www.foomo.org
@@ -123,6 +124,7 @@ class Compiler
 	 */
 	public static function compile(AbstractBundle $bundle)
 	{
+		Timer::start(__METHOD__);
 		$dependencies = Dependency\Manager::getSortedDependencies($bundle);
 		$dependencies[] = $topLevel = new Dependency($bundle, Dependency::TYPE_LINK);
 		$mergers = array(
@@ -187,6 +189,7 @@ class Compiler
 				}
 			}
 		}
+		Timer::stop(__METHOD__);
 		return $topLevel->result;
 	}
 
