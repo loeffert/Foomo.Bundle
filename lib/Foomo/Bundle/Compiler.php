@@ -37,7 +37,7 @@ class Compiler
 	//------------------------------------------------------------------------------------------------------------------
 
 	/**
-	 * @param mixed $bundleProvider
+	 * @param string $bundleProvider
 	 * @param array $bundleProviderArguments
 	 * @param bool $debug
 	 * @return Compiler\Result|mixed
