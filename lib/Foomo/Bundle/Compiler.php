@@ -89,6 +89,23 @@ class Compiler
 
 	}
 
+	public static function compileToJSBundle($bundleProvider, array $bundleProviderArguments = array(), $debug = null)
+	{
+		$scripts = array();
+		$styleSheets = array();
+		foreach(self::compileAndCache($bundleProvider, $bundleProviderArguments, $debug)->resources as $resource) {
+			if($resource->mimeType == Compiler\Result\Resource::MIME_TYPE_JS) {
+				$scripts[] = $resource->link;
+			} else if($resource->mimeType == Compiler\Result\Resource::MIME_TYPE_CSS) {
+				$styleSheets[] = $resource->link;
+			}
+		}
+		return (object) array(
+			'scripts' => $scripts,
+			'styleSheets' => $styleSheets
+		);
+	}
+
 	/**
 	 * @param string $bundleProvider
 	 * @param array $bundleProviderArguments
@@ -124,73 +141,85 @@ class Compiler
 	 */
 	public static function compile(AbstractBundle $bundle)
 	{
-		Timer::start(__METHOD__);
-		$dependencies = Dependency\Manager::getSortedDependencies($bundle);
-		$dependencies[] = $topLevel = new Dependency($bundle, Dependency::TYPE_LINK);
-		$mergers = array(
-			Compiler\Result\Resource::MIME_TYPE_CSS => null,
-			Compiler\Result\Resource::MIME_TYPE_JS => null
-		);
-		$mergersFound = 0;
-		foreach ($dependencies as $dependency) {
-			if(count($mergers) > $mergersFound) {
-				foreach($mergers as $mimeType => $merger) {
-					if(is_null($merger) && call_user_func_array(array(get_class($dependency->bundle), 'canMerge'), array($mimeType))) {
-						$mergers[$mimeType] = $dependency->bundle;
-						$mergersFound ++;
+		static $cache = array();
+		$cacheKey = md5sum(serialize($bundle));
+		if(!isset($cache[$cacheKey])) {
+			Timer::start(__METHOD__);
+
+			foreach($bundle->references as $reference) {
+				$result = new Compiler\Result;
+				$reference->compile($result);
+			}
+
+
+			$dependencies = Dependency\Manager::getSortedDependencies($bundle);
+			$dependencies[] = $topLevel = new Dependency($bundle, Dependency::TYPE_LINK);
+			$mergers = array(
+				Compiler\Result\Resource::MIME_TYPE_CSS => null,
+				Compiler\Result\Resource::MIME_TYPE_JS => null
+			);
+			$mergersFound = 0;
+			foreach ($dependencies as $dependency) {
+				if(count($mergers) > $mergersFound) {
+					foreach($mergers as $mimeType => $merger) {
+						if(is_null($merger) && call_user_func_array(array(get_class($dependency->bundle), 'canMerge'), array($mimeType))) {
+							$mergers[$mimeType] = $dependency->bundle;
+							$mergersFound ++;
+						}
+					}
+				}
+				$dependency->compile();
+			}
+			self::build($topLevel, $bundle->debug);
+			// if something has to be merged, do it now
+			for ($i = 0; $i < count($topLevel->result->resources); $i++) {
+				$resources = $topLevel->result->resources[$i];
+				if (is_array($resources)) {
+					$mimeFiles = array();
+					foreach($resources['resources'] as $resource) {
+						if(!isset($mimeFiles[$resource->mimeType])) {
+							$mimeFiles[$resource->mimeType] = array();
+						}
+						$mimeFiles[$resource->mimeType][] = $resource->file;
+					}
+					foreach($mimeFiles as $mimeType => $files) {
+						switch($mimeType) {
+							case Compiler\Result\Resource::MIME_TYPE_JS:
+								$suffix = '.min.js';
+								break;
+							case Compiler\Result\Resource::MIME_TYPE_CSS:
+								$suffix = '.min.css';
+								break;
+							default:
+								trigger_error('can not merge mimeType: ' . $topLevel->result->mimeType, E_USER_ERROR);
+						}
+
+						$name = 'merged-' . $resources['name'] . '-' . md5(implode('-', $files));
+						$basename =  $name . $suffix;
+
+						$filename = \Foomo\Bundle\Module::getHtdocsVarDir() . DIRECTORY_SEPARATOR . $basename;
+						if (!file_exists($filename)) {
+							$newContents = call_user_func_array(array(get_class($mergers[$mimeType]), 'mergeFiles'), array($files, $bundle->debug));
+							$oldContents = '';
+							if(file_exists($filename)) {
+								$oldContents = file_get_contents($filename);
+							}
+							if($oldContents != $newContents) {
+								file_put_contents($filename, $newContents);
+							}
+						}
+						$topLevel->result->resources[$i] = Compiler\Result\Resource::create(
+							$mimeType,
+							$filename,
+							\Foomo\Bundle\Module::getHtdocsVarBuildPath($basename)
+						);
 					}
 				}
 			}
-			$dependency->compile();
+			Timer::stop(__METHOD__);
+			$cache[$cacheKey] = $topLevel->result;
 		}
-		self::build($topLevel, $bundle->debug);
-		// if something has to be merged, do it now
-		for ($i = 0; $i < count($topLevel->result->resources); $i++) {
-			$resources = $topLevel->result->resources[$i];
-			if (is_array($resources)) {
-				$mimeFiles = array();
-				foreach($resources['resources'] as $resource) {
-					if(!isset($mimeFiles[$resource->mimeType])) {
-						$mimeFiles[$resource->mimeType] = array();
-					}
-					$mimeFiles[$resource->mimeType][] = $resource->file;
-				}
-				foreach($mimeFiles as $mimeType => $files) {
-					switch($mimeType) {
-						case Compiler\Result\Resource::MIME_TYPE_JS:
-							$suffix = '.min.js';
-							break;
-						case Compiler\Result\Resource::MIME_TYPE_CSS:
-							$suffix = '.min.css';
-							break;
-						default:
-							trigger_error('can not merge mimeType: ' . $topLevel->result->mimeType, E_USER_ERROR);
-					}
-
-					$name = 'merged-' . $resources['name'] . '-' . md5(implode('-', $files));
-					$basename =  $name . $suffix;
-
-					$filename = \Foomo\Bundle\Module::getHtdocsVarDir() . DIRECTORY_SEPARATOR . $basename;
-					if (!file_exists($filename)) {
-						$newContents = call_user_func_array(array(get_class($mergers[$mimeType]), 'mergeFiles'), array($files, $bundle->debug));
-						$oldContents = '';
-						if(file_exists($filename)) {
-							$oldContents = file_get_contents($filename);
-						}
-						if($oldContents != $newContents) {
-							file_put_contents($filename, $newContents);
-						}
-					}
-					$topLevel->result->resources[$i] = Compiler\Result\Resource::create(
-						$mimeType,
-						$filename,
-						\Foomo\Bundle\Module::getHtdocsVarBuildPath($basename)
-					);
-				}
-			}
-		}
-		Timer::stop(__METHOD__);
-		return $topLevel->result;
+		return $cache[$cacheKey];
 	}
 
 	public static function build(Dependency $dependency, $debug)

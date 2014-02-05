@@ -40,6 +40,11 @@ abstract class AbstractBundle
 	 */
 	public $dependencies = array();
 
+	/**
+	 * @var AbstractBundle[]
+	 */
+	public $references = array();
+
 	protected function __construct($name)
 	{
 		$this->name = $name;
@@ -67,6 +72,11 @@ abstract class AbstractBundle
 	{
 		// make sure thins are not duplicate - check bundle name
 		$this->dependencies[$bundle->name] = new Dependency($bundle, Dependency::TYPE_MERGE);
+		return $this;
+	}
+	public function addReference(AbstractBundle $bundle)
+	{
+		$this->references[$bundle->name] = $bundle;
 		return $this;
 	}
 	/**
