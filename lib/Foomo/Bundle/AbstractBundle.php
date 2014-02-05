@@ -129,7 +129,17 @@ abstract class AbstractBundle
 		}
 		return $this;
 	}
-
+	public function getFingerPrint()
+	{
+		$ret = $this->name . '-' . ($this->debug?'debug':'prod');
+		foreach($this->references as $reference) {
+			$ret .= '-reference' . $reference->name;
+		}
+		foreach($this->dependencies as $dependency) {
+			$ret .= '-dependecy-' . $dependency->type . '-' . $dependency->bundle->getFingerPrint();
+		}
+		return $ret;
+	}
 
 	/**
 	 * @param AbstractBundle[] $bundles

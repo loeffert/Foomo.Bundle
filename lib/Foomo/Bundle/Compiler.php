@@ -142,7 +142,7 @@ class Compiler
 	public static function compile(AbstractBundle $bundle)
 	{
 		static $cache = array();
-		$cacheKey = md5sum(serialize($bundle));
+		$cacheKey = md5($bundle->getFingerPrint());
 		if(!isset($cache[$cacheKey])) {
 			Timer::start(__METHOD__);
 
