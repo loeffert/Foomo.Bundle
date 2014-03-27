@@ -182,6 +182,7 @@ class Compiler
 						}
 						$mimeFiles[$resource->mimeType][] = $resource->file;
 					}
+					$combinedResources = array();
 					foreach($mimeFiles as $mimeType => $files) {
 						switch($mimeType) {
 							case Compiler\Result\Resource::MIME_TYPE_JS:
@@ -208,19 +209,38 @@ class Compiler
 								file_put_contents($filename, $newContents);
 							}
 						}
-						$topLevel->result->resources[$i] = Compiler\Result\Resource::create(
+						$combinedResources[] = Compiler\Result\Resource::create(
 							$mimeType,
 							$filename,
 							\Foomo\Bundle\Module::getHtdocsVarBuildPath($basename)
 						);
 					}
+
+					$topLevel->result->resources[$i] = $combinedResources;
 				}
 			}
 			Timer::stop(__METHOD__);
+			$topLevel->result->resources = self::flattenResources($topLevel->result->resources);
 			$cache[$cacheKey] = $topLevel->result;
 		}
 		return $cache[$cacheKey];
 	}
+
+	private static function flattenResources($nestedResources, &$flatResources = null)
+	{
+		if(is_null($flatResources)) {
+			$flatResources = array();
+		}
+		if(is_object($nestedResources)) {
+			$flatResources[] = $nestedResources;
+		} else {
+			foreach($nestedResources as $nestedResource) {
+				self::flattenResources($nestedResource, $flatResources);
+			}
+		}
+		return $flatResources;
+	}
+
 
 	public static function build(Dependency $dependency, $debug)
 	{
@@ -236,7 +256,7 @@ class Compiler
 					'name' => $dependency->bundle->name
 				);
 				$lastItem = array_pop($dependency->result->resources);
-				if (is_array($lastItem)) {
+				if (is_array($lastItem) && !empty($lastItem['resources'])) {
 					$lastResource = array_pop($lastItem['resources']);
 					$merged['resources'] = array_merge($merged['resources'], $lastItem['resources']);
 					$merged['resources'][] = $lastResource;
