@@ -80,9 +80,9 @@ class Module extends \Foomo\Modules\ModuleBase
 	}
 	public static function cleanDir($dir, MakeResult $result)
 	{
-		$result->addEntry('cleaning js files in ' . $dir);
+		$result->addEntry('cleaning css and js files in ' . $dir);
 		foreach(new \DirectoryIterator($dir) as $fileInfo) {
-			if($fileInfo->isFile() && in_array(substr($fileInfo->getFilename(), -3), array('.js', '.css'))) {
+			if($fileInfo->isFile() && preg_match('/(\.css|\.js)$/', $fileInfo->getFilename())) {
 				if(unlink($fileInfo->getPathname())) {
 					$result->addEntry('removed ' . $fileInfo->getFilename());
 				} else {
