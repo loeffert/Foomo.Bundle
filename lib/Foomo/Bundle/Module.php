@@ -36,7 +36,7 @@ class Module extends \Foomo\Modules\ModuleBase
 	 *
 	 */
 	const NAME = 'Foomo.Bundle';
-	const VERSION = '0.1.1';
+	const VERSION = '0.1.2';
 
 	//---------------------------------------------------------------------------------------------
 	// ~ Overriden static methods
@@ -82,7 +82,7 @@ class Module extends \Foomo\Modules\ModuleBase
 	{
 		$result->addEntry('cleaning js files in ' . $dir);
 		foreach(new \DirectoryIterator($dir) as $fileInfo) {
-			if($fileInfo->isFile() && substr($fileInfo->getFilename(), -3) == '.js') {
+			if($fileInfo->isFile() && in_array(substr($fileInfo->getFilename(), -3), array('.js', '.css'))) {
 				if(unlink($fileInfo->getPathname())) {
 					$result->addEntry('removed ' . $fileInfo->getFilename());
 				} else {
