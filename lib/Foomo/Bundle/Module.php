@@ -36,7 +36,7 @@ class Module extends \Foomo\Modules\ModuleBase
 	 *
 	 */
 	const NAME = 'Foomo.Bundle';
-	const VERSION = '0.1.2';
+	const VERSION = '0.1.3';
 
 	//---------------------------------------------------------------------------------------------
 	// ~ Overriden static methods
@@ -104,6 +104,36 @@ class Module extends \Foomo\Modules\ModuleBase
 			default:
 				parent::make($target, $result);
 		}
+	}
+
+	/**
+	 * Returns the implementing site module name
+	 *
+	 * @return string
+	 */
+	public static function getRootModule()
+	{
+		return \Foomo\Modules\Manager::getDocumentRootModule();
+	}
+
+	/**
+	 * Returns the implementing site module class name
+	 *
+	 * @return string|\Foomo\Modules\ModuleBase
+	 */
+	public static function getRootModuleClass()
+	{
+		return \Foomo\Modules\Manager::getModuleClassByName(static::getRootModule());
+	}
+	/**
+	 * Returns the implementing site module name space
+	 *
+	 * @return string|\Foomo\Modules\ModuleBase
+	 */
+	public static function getRootModuleNamespace()
+	{
+		$className = static::getRootModuleClass();
+		return implode('\\', array_slice(explode('\\', $className), 0, -1));
 	}
 
 }
